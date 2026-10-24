@@ -5,10 +5,13 @@ using UnityEngine.AI;
 public class SW_Movement : MonoBehaviour
 {
     public Renderer floor;
-    public Wolf wolf;
+
+    [Tooltip("Leave empty to auto-find every Wolf in the scene on Start")]
+    public Wolf[] wolves;
+
     public float notice = 12f;
     public float viewAngle = 120f;
-    public float rushDistance = 5f;
+    public float sneakTime = 4f; // seconds of sneaking before it charges
     public float catchDistance = 2f;
     public float waitTime = 3f;
     public float walkSpeed = 2f;
@@ -27,14 +30,14 @@ public class SW_Movement : MonoBehaviour
     public float suspicionTime = 15f;
     public float suspicionRadius = 10f;
 
-    public Stamina stamina = new Stamina { max = 6f };
-
     public bool seesWolf { get; private set; }
     public bool sneaking { get; private set; }
-    public bool exhausted => stamina.Exhausted;
+    public bool isWolf { get; private set; } // true once it has eaten a wolf and become one
+    public Wolf Prey => prey;                // the wolf it is currently hunting
 
     NavMeshAgent agent;
     RangeCircle circle;
+    Wolf prey; // the wolf it is currently hunting
     Vector3 target;
     Vector3 lastSeen;
     Vector3 suspicionCenter;
@@ -43,68 +46,122 @@ public class SW_Movement : MonoBehaviour
     bool busy;
     bool searching, lookingAround;
     float searchTimer;
+    float sneakTimer;
+    bool rushing;
 
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
-        stamina.Init();
         circle = gameObject.AddComponent<RangeCircle>();
         circle.color = Color.red;
+
+        if (wolves == null || wolves.Length == 0)
+            wolves = FindObjectsByType<Wolf>(FindObjectsSortMode.None);
     }
 
     void Update()
     {
         if (busy) return;
 
-        if (wolf == null)
+        // already a wolf: ignore all wolves, just wander
+        if (isWolf)
         {
-            stamina.Tick(false, Time.deltaTime);
             Patrol();
             return;
         }
 
-        Vector3 toWolf = wolf.transform.position - transform.position;
-        toWolf.y = 0f;
-        float dist = toWolf.magnitude;
-
-        if (dist < catchDistance)
+        // closest living wolf (used for the catch check)
+        Wolf closest = null;
+        float closestDist = float.MaxValue;
+        foreach (Wolf w in wolves)
         {
-            StartCoroutine(Devour());
+            if (w == null) continue;
+            float d = FlatDist(w);
+            if (d < closestDist) { closest = w; closestDist = d; }
+        }
+
+        if (closest == null)
+        {
+            seesWolf = sneaking = false;
+            Patrol();
             return;
         }
 
-        float range = seesWolf ? notice * 1.3f : notice;
-        circle.radius = range;
+        if (closestDist < catchDistance)
+        {
+            StartCoroutine(Devour(closest));
+            return;
+        }
 
+        // --- detection ---
         bool hadSight = seesWolf;
-        bool inCone = hadSight || Vector3.Angle(transform.forward, toWolf) < viewAngle / 2f;
-        seesWolf = dist < range && inCone && Sight.Clear(transform, wolf.transform);
+        Wolf seen = null;
 
-        bool heard = !seesWolf && wolf.isRunning && dist < hearRange;
+        if (prey != null && CanSee(prey, hadSight))
+        {
+            seen = prey; // keep hunting the same wolf
+        }
+        else
+        {
+            // otherwise notice the nearest wolf we can see
+            float best = float.MaxValue;
+            foreach (Wolf w in wolves)
+            {
+                if (w == null || w == prey) continue;
+                if (!CanSee(w, false)) continue;
+                float d = FlatDist(w);
+                if (d < best) { best = d; seen = w; }
+            }
+        }
 
-        bool running = false;
+        seesWolf = seen != null;
+        if (seen != prey) { rushing = false; sneakTimer = 0f; }
+        if (seen != null) prey = seen;
 
+        circle.radius = seesWolf ? notice * 1.3f : notice;
+
+        // --- hearing: any wolf running close by ---
+        Wolf heardWolf = null;
+        if (!seesWolf)
+        {
+            foreach (Wolf w in wolves)
+            {
+                if (w != null && w.isRunning && FlatDist(w) < hearRange)
+                {
+                    heardWolf = w;
+                    break;
+                }
+            }
+        }
+
+        // --- reaction ---
         if (seesWolf)
         {
-            lastSeen = wolf.transform.position;
+            lastSeen = prey.transform.position;
             searching = lookingAround = false;
             suspicionUntil = 0f;
 
-            bool rush = wolf.seesEnemy || dist < rushDistance;
-            running = rush && !stamina.Exhausted;
-            sneaking = !rush;
+            // sneak first; charge after sneakTime, or immediately if the wolf notices us
+            if (!rushing)
+            {
+                sneakTimer += Time.deltaTime;
+                if (prey.seesEnemy || sneakTimer >= sneakTime) rushing = true;
+            }
 
-            agent.speed = running ? runSpeed : (rush ? walkSpeed : sneakSpeed);
+            sneaking = !rushing;
+            agent.speed = rushing ? runSpeed : sneakSpeed;
             agent.SetDestination(lastSeen);
             needTarget = true;
         }
         else
         {
             sneaking = false;
+            rushing = false;
+            sneakTimer = 0f;
 
-            if (heard) lastSeen = wolf.transform.position;
+            if (heardWolf != null) lastSeen = heardWolf.transform.position;
 
-            if (hadSight || heard)
+            if (hadSight || heardWolf != null)
             {
                 searching = true;
                 lookingAround = false;
@@ -114,8 +171,25 @@ public class SW_Movement : MonoBehaviour
             if (searching) Search();
             else Patrol();
         }
+    }
 
-        stamina.Tick(running, Time.deltaTime);
+    float FlatDist(Wolf w)
+    {
+        Vector3 d = w.transform.position - transform.position;
+        d.y = 0f;
+        return d.magnitude;
+    }
+
+    bool CanSee(Wolf w, bool hadSight)
+    {
+        Vector3 to = w.transform.position - transform.position;
+        to.y = 0f;
+
+        float range = hadSight ? notice * 1.3f : notice;
+        if (to.magnitude >= range) return false;
+        if (!hadSight && Vector3.Angle(transform.forward, to) >= viewAngle / 2f) return false;
+
+        return Sight.Clear(transform, w.transform);
     }
 
     void Search()
@@ -146,24 +220,26 @@ public class SW_Movement : MonoBehaviour
         }
     }
 
-    IEnumerator Devour()
+    IEnumerator Devour(Wolf victim)
     {
         busy = true;
         seesWolf = false;
         sneaking = false;
+        rushing = false;
+        sneakTimer = 0f;
         searching = lookingAround = false;
         suspicionUntil = 0f;
+        prey = null;
 
         agent.ResetPath();
         agent.velocity = Vector3.zero;
 
-        Mesh mesh = wolf.GetComponentInChildren<MeshFilter>().sharedMesh;
-        Material[] materials = wolf.GetComponentInChildren<Renderer>().sharedMaterials;
-        Vector3 wolfScale = wolf.transform.localScale;
-        float baseOffset = wolf.GetComponent<NavMeshAgent>().baseOffset;
+        Mesh mesh = victim.GetComponentInChildren<MeshFilter>().sharedMesh;
+        Material[] materials = victim.GetComponentInChildren<Renderer>().sharedMaterials;
+        Vector3 wolfScale = victim.transform.localScale;
+        float baseOffset = victim.GetComponent<NavMeshAgent>().baseOffset;
 
-        Destroy(wolf.gameObject);
-        wolf = null;
+        Destroy(victim.gameObject);
 
         Destroy(circle.GetComponent<LineRenderer>());
         Destroy(circle);
@@ -175,6 +251,7 @@ public class SW_Movement : MonoBehaviour
         transform.localScale = wolfScale;
         agent.baseOffset = baseOffset;
 
+        isWolf = true; // from now on it ignores every wolf
         needTarget = true;
         busy = false;
     }

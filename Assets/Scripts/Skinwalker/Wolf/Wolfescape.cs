@@ -61,7 +61,7 @@ public class WolfEscape
         first.y = 0f;
 
         float turnTime = Vector3.Angle(T.forward, first) / Mathf.Max(Agent.angularSpeed, 1f);
-        float enemySpeed = w.enemy.exhausted ? w.enemy.walkSpeed : w.enemy.runSpeed;
+        float enemySpeed = w.enemy.runSpeed;
         float walked = 0f, margin = float.MaxValue;
 
         for (int i = 1; i < c.Length; i++)
