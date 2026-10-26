@@ -1,0 +1,5 @@
+Rename scripts properly.
+Reattach scripts to the correct GameObjects.
+Verify that each script does what it is supposed to do.
+Organise scripts into their appropriate folders.
+Check that everything still works after reorganising.
