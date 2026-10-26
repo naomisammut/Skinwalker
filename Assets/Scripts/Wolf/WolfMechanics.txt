@@ -1,0 +1,24 @@
+WOLF MECHANICS
+Last Updated: 26/10/2026
+
+Summary:
+Wolves detect nearby wolves and stay in groups. When a Skinwalker approaches, they run if it is too close or hide at a safe distance. 
+If the Skinwalker kills a wolf, the others avoid its body and flee.
+
+BEHAVIOURS:
+Script					Responsibility
+WolfController			Controls states and decides which behaviour to execute.
+WolfPerception			Detects the Skinwalker, nearby wolves and 'dead' wolf.
+WolfMovement			Handles fleeing, hiding, regrouping and avoiding locations.
+WolfPackManager			Coordinates pack behaviour and shares threat information.
+
+Reaction to skinwalker:
+Distance to skinwalker		Reaction		Script
+--------------------------------------------------
+Too close					Run												WolfMovement			
+Good distance away			Hide and avoid its last known location			WolfMovement			
+Killed						Avoid its body and flee							WolfPackManager
+(Used in all reactions: WolfController and WolfPerception)
+
+Known issues / TODOS:
+- Wolves in a group should keep a small distance from each other so they don't collide.
