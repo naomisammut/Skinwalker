@@ -11,3 +11,8 @@ The wolf is walking and meets the skinwalker face to face. The wolf doesn't noti
 Fix:
 Stalking should only work from behind the wolf.
 If the skinwalker is in front of the wolf, it stops and stays still until the wolf passes, then sneaks in behind it.
+
+
+Added new scene: Cabin
+This scene will contain the cabin (safe zone) where players can rest, upgrade and ect.
+It will spawn at the end of the map and every map the items in the cabin will be more upgraded as the levels go on.
