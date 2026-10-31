@@ -3,11 +3,13 @@ using UnityEngine.InputSystem;
 
 // Attach to the Shop object.
 // Shows a "[E] TO INTERACT" prompt when the player is close AND looking at the shop.
+// Pressing E opens the menu.
 public class ShopInteract : MonoBehaviour
 {
     [Header("References")]
     public Transform player;            // auto-found if left empty
     public Camera playerCamera;         // auto-found (Main Camera) if left empty
+    public MenuController menu;         // auto-found if left empty
 
     [Header("Interaction")]
     public float interactDistance = 3f;
@@ -32,6 +34,7 @@ public class ShopInteract : MonoBehaviour
             if (fpc != null) player = fpc.transform;
         }
         if (playerCamera == null) playerCamera = Camera.main;
+        if (menu == null) menu = FindFirstObjectByType<MenuController>();
     }
 
     private void Update()
@@ -45,7 +48,8 @@ public class ShopInteract : MonoBehaviour
         Vector3 toShop = (transform.position - playerCamera.transform.position).normalized;
         bool looking = Vector3.Angle(playerCamera.transform.forward, toShop) <= lookAngle;
 
-        _canInteract = near && looking;
+        // No prompt while the menu is open
+        _canInteract = near && looking && !MenuController.IsOpen;
 
         // Smooth fade in/out
         _alpha = Mathf.MoveTowards(_alpha, _canInteract ? 1f : 0f, fadeSpeed * Time.deltaTime);
@@ -60,8 +64,8 @@ public class ShopInteract : MonoBehaviour
 
     private void Interact()
     {
-        // Nothing happens yet. Put shop logic here later.
-        Debug.Log("Player used the shop!");
+        if (menu != null) menu.OpenMenu();
+        else Debug.LogWarning("ShopInteract: no MenuController found in the scene.");
     }
 
     private void OnGUI()
